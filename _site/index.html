@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>JacketWoo</title>
+  <meta name="description" content="JacketWoo">
+
+  <link rel="canonical" href="https://kernelmaker.github.io/">
+
+  <link rel="stylesheet" href="/assets/css/bootstrap.min.css">
+  <!-- <link rel="stylesheet" href="/assets/css/icard_resume.css"> -->
+  <link rel="stylesheet" href="/assets/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/assets/css/blog.css" >
+  <link rel="stylesheet" href="/assets/css/syntax.css">
+
+  <link rel="icon" type="image/png" href="/assets/img/jacketwoo.jpeg">
+
+  <!-- Google fonts -->
+  <link rel='stylesheet' href='//fonts.googleapis.com/css?family=Open+Sans:300' type='text/css'>
+  <link rel='stylesheet' href='//fonts.googleapis.com/css?family=Source+Sans+Pro' type='text/css'>
+
+  <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
+  <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+  <!--[if lt IE 9]>
+  <script src="assets/js/html5shiv.min.js"></script>
+  <script src="assets/js/respond.min.js"></script>
+  <![endif]-->
+
+</head>
+
+
+  <body>
+
+    <header class="bloghead">
+    <dev class="authorheader">
+        <a href="/">
+            <img alt="My Avatar" src="/assets/img/jacketwoo.jpeg"/>
+        </a>
+        <dev class="blogtitle">
+            <h1><a href="/">JacketWoo</a></h1>
+            <h5> King Birds Fly fast and Early! </h5>
+        </dev>
+    </dev>
+
+    <nav class="menu" role="nav">
+        <ul>
+            <li><a href="/">Home</a></li>
+            <li>|</li>
+            <li><a href="/menu.html">Menu</a></li>
+            <li>|</li>
+            <li><a target="_blank" href="https://github.com/kernelmaker">Github</a></li>
+            <li>|</li>
+            <li><a target="_blank" href="/about.html"> About Me</a></li>
+        </ul>
+    </nav>
+</header>
+
+    <main class="blogmain">
+      
+<article class="preview">
+    <header>
+        <h2 class="post-title">
+            <a href="/2016/06/13/wxf.html">  关于TCP连接的99号和110号错误 </a>
+        </h2>
+        <p class="post-time"> 2016年04月23日 星期六</p>
+    </header>
+    <section class="post-section">
+        <p>
+            <h1 id="tcp99110">关于TCP连接的99号和110号错误</h1>
+
+<p>当客户端频繁的采用短链接时候，经常会遇到[110][connection time out]和[99][could not assigned requested address]的错误。前段时间我们的存储服务就遇到了这样的一拨报警，经过调研分析，基本确定以上这两个错误与客户端端口的TIME-WAIT状态以及服务端的listen队列有关（当然也有其它可能的原因，这里只分析这两种）。</p>
+
+<p>从客户端来看，在我们的应用场景中，因为频繁的使用端连接，而且在同一台机上的客户端的数量比较多，造成了大量的TIME－WAIT状态的端口，当TIME－WAIT状态端口的数量铺满了整个port_range（由ip_local_port_range内核参数指定）范围后，就会产生99号错误；从服务端来看，因为频繁大量的accept短链接，到达一定量后，服务端口的listen队列会出现溢出，这个时候，新的连接请求会被丢弃，连接建立失败，客户端也就产生了110号错误。
+    下面具体介绍两种错误产生的原因</p>
+
+
+        </p>
+        <p class="readmore">
+            <a href="/2016/06/13/wxf.html">
+                阅读全文
+                <span class="glyphicon glyphicon-circle-arrow-right"></span>
+            </a>
+        </p>
+    </section>
+
+</article>
+
+
+    </main>
+
+    <div class="footer-copyright">
+    <div class="container-fluid">
+        <div class="row-fluid">
+            <div class="col-md-12">
+                Copyright &copy; 2016 JacketWoo - All rights reserved.
+            </div>
+        </div>
+    </div>
+</div>
+<script type="text/javascript" src="/assets/js/jquery.min.js"></script>
+<script type="text/javascript" src="/assets/js/bootstrap.min.js"></script>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-77075031-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+
+
+  </body>
+
+</html>

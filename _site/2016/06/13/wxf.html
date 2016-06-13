@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+    <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>关于TCP连接的99号和110号错误</title>
+  <meta name="description" content="关于TCP连接的99号和110号错误当客户端频繁的采用短链接时候，经常会遇到[110][connection time out]和[99][could not assigned requested address]的错误。前段时间我们的存储服务就遇到了这样的一拨报警，经过调研分析，基本确定以上这两个错误与客户端端...">
+
+  <link rel="canonical" href="https://kernelmaker.github.io/2016/06/13/wxf.html">
+
+  <link rel="stylesheet" href="/assets/css/bootstrap.min.css">
+  <!-- <link rel="stylesheet" href="/assets/css/icard_resume.css"> -->
+  <link rel="stylesheet" href="/assets/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/assets/css/blog.css" >
+  <link rel="stylesheet" href="/assets/css/syntax.css">
+
+  <link rel="icon" type="image/png" href="/assets/img/jacketwoo.jpeg">
+
+  <!-- Google fonts -->
+  <link rel='stylesheet' href='//fonts.googleapis.com/css?family=Open+Sans:300' type='text/css'>
+  <link rel='stylesheet' href='//fonts.googleapis.com/css?family=Source+Sans+Pro' type='text/css'>
+
+  <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
+  <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+  <!--[if lt IE 9]>
+  <script src="assets/js/html5shiv.min.js"></script>
+  <script src="assets/js/respond.min.js"></script>
+  <![endif]-->
+
+</head>
+
+    <body>
+        <header class="bloghead">
+    <dev class="authorheader">
+        <a href="/">
+            <img alt="My Avatar" src="/assets/img/jacketwoo.jpeg"/>
+        </a>
+        <dev class="blogtitle">
+            <h1><a href="/">JacketWoo</a></h1>
+            <h5> King Birds Fly fast and Early! </h5>
+        </dev>
+    </dev>
+
+    <nav class="menu" role="nav">
+        <ul>
+            <li><a href="/">Home</a></li>
+            <li>|</li>
+            <li><a href="/menu.html">Menu</a></li>
+            <li>|</li>
+            <li><a target="_blank" href="https://github.com/kernelmaker">Github</a></li>
+            <li>|</li>
+            <li><a target="_blank" href="/about.html"> About Me</a></li>
+        </ul>
+    </nav>
+</header>
+
+
+        <main class="blogmain">
+            <header>
+                <h1 class="article-title">关于TCP连接的99号和110号错误</h1>
+                <p class="article-time">
+                    2016年04月23日 星期六,  发表于 <span>北京</span>
+                </p>
+                <p class="article-hint">
+                    如果您对本文有任何的建议或者疑问, 可以下方留言或者在
+                    <a href="https://github.com/kernelmaker/kernelmaker.github.io/issues" target="_blank">这里给我提 Issues</a>, 谢谢! :)
+                </p>
+            </header>
+            <h1 id="tcp99110">关于TCP连接的99号和110号错误</h1>
+
+<p>当客户端频繁的采用短链接时候，经常会遇到[110][connection time out]和[99][could not assigned requested address]的错误。前段时间我们的存储服务就遇到了这样的一拨报警，经过调研分析，基本确定以上这两个错误与客户端端口的TIME-WAIT状态以及服务端的listen队列有关（当然也有其它可能的原因，这里只分析这两种）。</p>
+
+<p>从客户端来看，在我们的应用场景中，因为频繁的使用端连接，而且在同一台机上的客户端的数量比较多，造成了大量的TIME－WAIT状态的端口，当TIME－WAIT状态端口的数量铺满了整个port_range（由ip_local_port_range内核参数指定）范围后，就会产生99号错误；从服务端来看，因为频繁大量的accept短链接，到达一定量后，服务端口的listen队列会出现溢出，这个时候，新的连接请求会被丢弃，连接建立失败，客户端也就产生了110号错误。
+    下面具体介绍两种错误产生的原因</p>
+
+<h3 id="could-not-assigned-requested-address">[99][could not assigned requested address]</h3>
+<blockquote>
+  <p>TIME-WAIT状态是连接一端主动关闭并发送完最后一个ACK之后所处的状态，这个状态一般会存在2MSL(Max Segment Lifttime，即一个包在传输过程中的最大生存时间)时间（所以又叫2MSL状态），之所以要有这个状态，是为了让前一个连接的包不影响后面的链接，并且可以被有效的应答，以保证TCP连接的可靠性。</p>
+</blockquote>
+
+<p>为了避免混淆在TIME-WAIT状态连接上的处理的包是前一个连接迟到的包还是新连接的包，TCP协议规定在整个TIME－WAIT状态下，不能再建立同样的连接（即四元组一样的连接，但是可以利用处于TIME－WAIT的端口建立四元组不一样的连接）。而一般操作系统的实现上为了安全，采用更加严格的规定，默认情况下不允许使用处于TIME－WAIT状态的本地端口，Linux就是这样的一个操作系统。Linux的TCP/IP协议栈在判断一个处于TIME-WAIT状态的本地端口是否可以作为一个新连接的本地绑定端口时，需要对这个端口做一个是否可用的的判断，下面是linux.2.6.32.70内核中这一部分逻辑的代码片段</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)
+{
+    ......
+    if (tcptw-&gt;tw_ts_recent_stamp &amp;&amp; //tw_ts_recent_stamp与内核参数tcp_timestamps相关
+        (......(sysctl_tcp_tw_reuse &amp;&amp; //sysctl_tcp_tw_reuse与内核参数tcp_tw_reuse相关
+                 get_seconds() - tcptw-&gt;tw_ts_recent_stamp &gt; 1))) {//两次连接的时间差要大于1秒
+        .......
+        return 1;
+    }
+    return 0;
+}
+</code></pre>
+</div>
+<blockquote>
+  <p>上面的代码片段，为了说明的简洁，略掉了大部分的代码</p>
+</blockquote>
+
+<p>在上面的逻辑中返回1表示可以用，返回0表示不可用，不可用后报的错是”EADDRNOTAVAIL”, 也就是“[99][could not assigned requested address]”。从上面的代码逻辑中可以看出，当tcp_tw_resuse对能否重用处于TIME-WAIT状态的端口至关重要
+1）若tcp_tw_resuse未打开，且没有空闲的窗口使用时，则会报“[99][could not assigned requested address]”的错误
+2）若tcp_tw_reuse打开了，且处于TIME_WAIT状态端口的连续两次连接使用间隔要小于等于1秒，也会报“[99][could not assigned requested address]”的错误
+<strong>验证:</strong>1）的情况好理解，现在验证2）的情况，这也是我们线上的客户端的情况，设定系统的port_range只有一个元素</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$cat "net.ipv4.ip_local_port_range = 1024 1024" &gt;&gt; /etc/sysctl.conf &amp;&amp; sysctl -p
+</code></pre>
+</div>
+
+<p>然后客户端果然返回”[99][could not assigned requested address]”错误，验证成功。</p>
+
+<h3 id="connection-time-out">[110][connection time out]</h3>
+<p>Linux的服务端从listen的端口建立的连接要经过两个队列的过渡，分别是SYN队列和ACCEPT队列。服务端接受到SYN请求后，会发送SYNACK，并把这个request sock存在SYN队列内；等到三次握手完成后，再存放到ACCEPT队列内；然后再由accept系统调用，从ACCEPT队列内拿出，交给用户使用。
+   SYN队列和ACCEPT队列都是有长度限制的，这个长度限制与以下三个参数有关：
+   a. 调用listen接口，传递给back_log参数；
+   b. 内核参数somaxconn;  //与ACCEPT队列相关
+   c.内核参数tcp_max_syn_backlog； //与SYN队列相关
+   我们线上的问题主要是ACCEPT队列出现溢出造成的，所以这里主要分析ACCEPT队列长度限制的情况
+在调用listen接口的时候，内核会用系统的somaxconn参数去截断传递给listen的back_log参数，下面是linux2.6.32-70的相关代码片段</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>@sock.c
+SYSCALL_DEFINE2(listen, int, fd, int, backlog)
+{
+......
+        if ((unsigned)backlog &gt; somaxconn)
+            backlog = somaxconn; //被截断
+......
+            err = sock-&gt;ops-&gt;listen(sock, backlog);//调用的就是下面的inet_listen函数
+......
+}
+
+@af_inet.c
+int inet_listen(struct socket *sock, int backlog)
+{
+......
+    sk-&gt;sk_max_ack_backlog = backlog;
+......
+}
+</code></pre>
+</div>
+
+<p>上面的sk_max_ack_backlog就是listen端口的ACCEPT队列的最大长度
+当短链接的量太大，accept系统调用接口处理来不及时，ACCEPT队列就可能会阻塞溢出，这个时候，Linux的TCP/IP协议栈的做法是把新来的SYN请求丢弃掉（ Accept backlog is full. If we have already queued enough of warm entries in syn queue, drop request. It is better than clogging syn queue with openreqs with exponentially increasing timeout.），这样当客户端设定的连接超时不够发送第二次SYN请求时，就会收不到服务端ack，连接建立失败，这个时候报的错误是ETIMEDOUT，也就是“[110][connection time out]“。下面是linux.2.6.32-70的相关代码片段</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>@tcp_ipv4.c
+int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
+{
+......
+    if (sk_acceptq_is_full(sk) &amp;&amp; inet_csk_reqsk_queue_young(sk) &gt; 1) //inet_csk_reqsk_queue_young(sk) 表示SYN队列中还没有握手完成的请求数，也就是young request sock的数量
+        goto drop;//丢弃这个SYN请求
+......
+}
+
+@sock.h
+static inline int sk_acceptq_is_full(struct sock *sk)
+{
+	return sk-&gt;sk_ack_backlog &gt; sk-&gt;sk_max_ack_backlog;
+}
+</code></pre>
+</div>
+
+<p>在上面的代码段中，sk_acceptq_is_full(sk)是判断ACCEPT队列是否满了（队列长度限制已经在listen系统调用中被截断了，这也是为什么我们修改内核somaxconn内核参数，对当前应用程序的已经listen的端口的ACCEPT队列长度限制不产生影响的原因，需要重起，才能够使用新的内核参数），如果满了，而且SYN队列中又有新的没有完成握手的连接请求，则丢弃当前这个链接请求，这个时候的如果客户端设置的链接超时只够它发送一次SYN请求，则链接失败，发生“[110][connection time out]“报错。
+<strong>验证</strong>:
+1.按照线上情况，设置somaxconn为128,listen接口的back_log为8192 运行一定数量的客户端，频繁的向服务端建立TCP链接，然后释放，观察情况
+2.设置somaxconn为8192, 同时设置listen的接口的back_log参数也为8192,重复1的步骤</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>&lt;?php
+while (true) {
+  $fp  =  fsockopen ( "10.138.79.205" ,  8221 ,  $errno ,  $errstr ,  0.5 );
+  fclose ( $fp );
+}
+?&gt;
+</code></pre>
+</div>
+
+<p>上面是单个客户端的代码逻辑，很简单。
+1. somaxconn为128。
+   客户端大量报错</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>PHP Warning:  fsockopen(): unable to connect to xxxxxxxxxxx:8221 (Connection refused) in /home/wxf/sample.php on line 3
+PHP Warning:  fsockopen(): unable to connect to xxxxxxxxxxx:8221 (Connection refused) in /home/wxy/sample.php on line 3
+PHP Warning:  fsockopen(): unable to connect to xxxxxxxxxxx:8221 (Connection refused) in /home/wxy/sample.php on line 3
+....
+</code></pre>
+</div>
+
+<p>服务端</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>[wxf@host ~]$ for i in {1..6}; do netstat -s | grep -i listen; echo; sleep 1; done
+    2436905 times the listen queue of a socket overflowed
+    2436905 SYNs to LISTEN sockets ignored
+
+    2436927 times the listen queue of a socket overflowed
+    2436927 SYNs to LISTEN sockets ignored
+
+    2436950 times the listen queue of a socket overflowed
+    2436950 SYNs to LISTEN sockets ignored
+
+    2436985 times the listen queue of a socket overflowed
+    2436985 SYNs to LISTEN sockets ignored
+
+    2436999 times the listen queue of a socket overflowed
+    2436999 SYNs to LISTEN sockets ignored
+
+    2437018 times the listen queue of a socket overflowed
+    2437018 SYNs to LISTEN sockets ignored
+</code></pre>
+</div>
+
+<p>从上面的结果可以看出，被丢弃的SYNs在不断的增加<br />
+1. somaxconn为8192<br />
+   客户端没有报错<br />
+   服务端</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>[wxy@host ~]$ for i in {1..6}; do netstat -s | grep -i listen; echo ;sleep 1; done
+    2439591 times the listen queue of a socket overflowed
+    2439591 SYNs to LISTEN sockets ignored
+
+    2439591 times the listen queue of a socket overflowed
+    2439591 SYNs to LISTEN sockets ignored
+
+    2439591 times the listen queue of a socket overflowed
+    2439591 SYNs to LISTEN sockets ignored
+
+    2439591 times the listen queue of a socket overflowed
+    2439591 SYNs to LISTEN sockets ignored
+
+    2439591 times the listen queue of a socket overflowed
+    2439591 SYNs to LISTEN sockets ignored
+
+    2439591 times the listen queue of a socket overflowed
+    2439591 SYNs to LISTEN sockets ignored
+</code></pre>
+</div>
+
+<p>可以看出，这段时间内没有被丢弃的SYNs</p>
+
+<p><strong>验证的结果和内核代码以及我们的预想是吻合的</strong></p>
+
+<p>解决办法：
+1. 提高客户端的链接超时限制。当前是300ms，比如可以提升到3s等；
+2. 提高服务端的somaxconn限制，这是个指标不治本的方法，只能是一定程度的缓解。（修改内核的其他的网络参数也是一样，只能是缓解，并不能解决根本问题）
+3. 在客户端使用连接缓冲池，将短链接转换成长链接来使用（个人认为这个才是更好的办法，一劳永逸）。</p>
+
+            <footer class="article-footer">
+    <div class="authorimage">
+        <img src="/assets/img/jacketwoo.jpeg" alt="My Avatar" class="img-circle">
+    </div>
+    <section class="author">
+        <h4><a href="/about.html">KernelMaker</a></h4>
+        <a href="mailto:songzhao.asm@icloud.com">songzhao.asm@icloud.com</a>
+    </section>
+</footer>
+
+            <div id="disqus_thread"></div>
+<script>
+/**
+* RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+* LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+
+s.src = '//kernelmaker.disqus.com/embed.js';
+
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+
+        </main>
+
+        <div class="footer-copyright">
+    <div class="container-fluid">
+        <div class="row-fluid">
+            <div class="col-md-12">
+                Copyright &copy; 2016 JacketWoo - All rights reserved.
+            </div>
+        </div>
+    </div>
+</div>
+<script type="text/javascript" src="/assets/js/jquery.min.js"></script>
+<script type="text/javascript" src="/assets/js/bootstrap.min.js"></script>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-77075031-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+
+
+    </body>
+
+</html>
