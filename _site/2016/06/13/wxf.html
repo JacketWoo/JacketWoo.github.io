@@ -82,19 +82,20 @@
 
 <p>为了避免混淆在TIME-WAIT状态连接上的处理的包是前一个连接迟到的包还是新连接的包，TCP协议规定在整个TIME－WAIT状态下，不能再建立同样的连接（即四元组一样的连接，但是可以利用处于TIME－WAIT的端口建立四元组不一样的连接）。而一般操作系统的实现上为了安全，采用更加严格的规定，默认情况下不允许使用处于TIME－WAIT状态的本地端口，Linux就是这样的一个操作系统。Linux的TCP/IP协议栈在判断一个处于TIME-WAIT状态的本地端口是否可以作为一个新连接的本地绑定端口时，需要对这个端口做一个是否可用的的判断，下面是linux.2.6.32.70内核中这一部分逻辑的代码片段</p>
 
-<div class="highlighter-rouge"><pre class="highlight"><code>int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)
-{
-    ......
-    if (tcptw-&gt;tw_ts_recent_stamp &amp;&amp; //tw_ts_recent_stamp与内核参数tcp_timestamps相关
-        (......(sysctl_tcp_tw_reuse &amp;&amp; //sysctl_tcp_tw_reuse与内核参数tcp_tw_reuse相关
-                 get_seconds() - tcptw-&gt;tw_ts_recent_stamp &gt; 1))) {//两次连接的时间差要大于1秒
-        .......
-        return 1;
-    }
-    return 0;
-}
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="kt">int</span> <span class="nf">tcp_twsk_unique</span><span class="p">(</span><span class="k">struct</span> <span class="n">sock</span> <span class="o">*</span><span class="n">sk</span><span class="p">,</span> <span class="k">struct</span> <span class="n">sock</span> <span class="o">*</span><span class="n">sktw</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">twp</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="p">......</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">tcptw</span><span class="o">-&gt;</span><span class="n">tw_ts_recent_stamp</span> <span class="o">&amp;&amp;</span> <span class="c1">//tw_ts_recent_stamp与内核参数tcp_timestamps相关
+</span>        <span class="p">(......(</span><span class="n">sysctl_tcp_tw_reuse</span> <span class="o">&amp;&amp;</span> <span class="c1">//sysctl_tcp_tw_reuse与内核参数tcp_tw_reuse相关
+</span>                 <span class="n">get_seconds</span><span class="p">()</span> <span class="o">-</span> <span class="n">tcptw</span><span class="o">-&gt;</span><span class="n">tw_ts_recent_stamp</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)))</span> <span class="p">{</span><span class="c1">//两次连接的时间差要大于1秒
+</span>        <span class="p">.......</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
 </code></pre>
 </div>
+
 <blockquote>
   <p>上面的代码片段，为了说明的简洁，略掉了大部分的代码</p>
 </blockquote>
@@ -104,7 +105,7 @@
 2）若tcp_tw_reuse打开了，且处于TIME_WAIT状态端口的连续两次连接使用间隔要小于等于1秒，也会报“[99][could not assigned requested address]”的错误
 <strong>验证:</strong>1）的情况好理解，现在验证2）的情况，这也是我们线上的客户端的情况，设定系统的port_range只有一个元素</p>
 
-<div class="highlighter-rouge"><pre class="highlight"><code>$cat "net.ipv4.ip_local_port_range = 1024 1024" &gt;&gt; /etc/sysctl.conf &amp;&amp; sysctl -p
+<div class="language-shell highlighter-rouge"><pre class="highlight"><code><span class="nv">$cat</span> <span class="s2">"net.ipv4.ip_local_port_range = 1024 1024"</span> &gt;&gt; /etc/sysctl.conf <span class="o">&amp;&amp;</span> sysctl -p
 </code></pre>
 </div>
 
@@ -119,44 +120,44 @@
    我们线上的问题主要是ACCEPT队列出现溢出造成的，所以这里主要分析ACCEPT队列长度限制的情况
 在调用listen接口的时候，内核会用系统的somaxconn参数去截断传递给listen的back_log参数，下面是linux2.6.32-70的相关代码片段</p>
 
-<div class="highlighter-rouge"><pre class="highlight"><code>@sock.c
-SYSCALL_DEFINE2(listen, int, fd, int, backlog)
-{
-......
-        if ((unsigned)backlog &gt; somaxconn)
-            backlog = somaxconn; //被截断
-......
-            err = sock-&gt;ops-&gt;listen(sock, backlog);//调用的就是下面的inet_listen函数
-......
-}
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="c1">//@sock.c
+</span><span class="n">SYSCALL_DEFINE2</span><span class="p">(</span><span class="n">listen</span><span class="p">,</span> <span class="kt">int</span><span class="p">,</span> <span class="n">fd</span><span class="p">,</span> <span class="kt">int</span><span class="p">,</span> <span class="n">backlog</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="p">......</span>
+        <span class="k">if</span> <span class="p">((</span><span class="kt">unsigned</span><span class="p">)</span><span class="n">backlog</span> <span class="o">&gt;</span> <span class="n">somaxconn</span><span class="p">)</span>
+            <span class="n">backlog</span> <span class="o">=</span> <span class="n">somaxconn</span><span class="p">;</span> <span class="c1">//被截断
+</span><span class="p">......</span>
+            <span class="n">err</span> <span class="o">=</span> <span class="n">sock</span><span class="o">-&gt;</span><span class="n">ops</span><span class="o">-&gt;</span><span class="n">listen</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">backlog</span><span class="p">);</span><span class="c1">//调用的就是下面的inet_listen函数
+</span><span class="p">......</span>
+<span class="p">}</span>
 
-@af_inet.c
-int inet_listen(struct socket *sock, int backlog)
-{
-......
-    sk-&gt;sk_max_ack_backlog = backlog;
-......
-}
+<span class="c1">//@af_inet.c
+</span><span class="kt">int</span> <span class="n">inet_listen</span><span class="p">(</span><span class="k">struct</span> <span class="n">socket</span> <span class="o">*</span><span class="n">sock</span><span class="p">,</span> <span class="kt">int</span> <span class="n">backlog</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="p">......</span>
+    <span class="n">sk</span><span class="o">-&gt;</span><span class="n">sk_max_ack_backlog</span> <span class="o">=</span> <span class="n">backlog</span><span class="p">;</span>
+<span class="p">......</span>
+<span class="p">}</span>
 </code></pre>
 </div>
 
 <p>上面的sk_max_ack_backlog就是listen端口的ACCEPT队列的最大长度
 当短链接的量太大，accept系统调用接口处理来不及时，ACCEPT队列就可能会阻塞溢出，这个时候，Linux的TCP/IP协议栈的做法是把新来的SYN请求丢弃掉（ Accept backlog is full. If we have already queued enough of warm entries in syn queue, drop request. It is better than clogging syn queue with openreqs with exponentially increasing timeout.），这样当客户端设定的连接超时不够发送第二次SYN请求时，就会收不到服务端ack，连接建立失败，这个时候报的错误是ETIMEDOUT，也就是“[110][connection time out]“。下面是linux.2.6.32-70的相关代码片段</p>
 
-<div class="highlighter-rouge"><pre class="highlight"><code>@tcp_ipv4.c
-int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
-{
-......
-    if (sk_acceptq_is_full(sk) &amp;&amp; inet_csk_reqsk_queue_young(sk) &gt; 1) //inet_csk_reqsk_queue_young(sk) 表示SYN队列中还没有握手完成的请求数，也就是young request sock的数量
-        goto drop;//丢弃这个SYN请求
-......
-}
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="c1">//@tcp_ipv4.c
+</span><span class="kt">int</span> <span class="nf">tcp_v4_conn_request</span><span class="p">(</span><span class="k">struct</span> <span class="n">sock</span> <span class="o">*</span><span class="n">sk</span><span class="p">,</span> <span class="k">struct</span> <span class="n">sk_buff</span> <span class="o">*</span><span class="n">skb</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="p">......</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">sk_acceptq_is_full</span><span class="p">(</span><span class="n">sk</span><span class="p">)</span> <span class="o">&amp;&amp;</span> <span class="n">inet_csk_reqsk_queue_young</span><span class="p">(</span><span class="n">sk</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)</span> <span class="c1">//inet_csk_reqsk_queue_young(sk) 表示SYN队列中还没有握手完成的请求数，也就是young request sock的数量
+</span>        <span class="k">goto</span> <span class="n">drop</span><span class="p">;</span><span class="c1">//丢弃这个SYN请求
+</span><span class="p">......</span>
+<span class="p">}</span>
 
-@sock.h
-static inline int sk_acceptq_is_full(struct sock *sk)
-{
-	return sk-&gt;sk_ack_backlog &gt; sk-&gt;sk_max_ack_backlog;
-}
+<span class="c1">//@sock.h
+</span><span class="k">static</span> <span class="kr">inline</span> <span class="kt">int</span> <span class="nf">sk_acceptq_is_full</span><span class="p">(</span><span class="k">struct</span> <span class="n">sock</span> <span class="o">*</span><span class="n">sk</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">return</span> <span class="n">sk</span><span class="o">-&gt;</span><span class="n">sk_ack_backlog</span> <span class="o">&gt;</span> <span class="n">sk</span><span class="o">-&gt;</span><span class="n">sk_max_ack_backlog</span><span class="p">;</span>
+<span class="p">}</span>
 </code></pre>
 </div>
 
@@ -165,12 +166,12 @@ static inline int sk_acceptq_is_full(struct sock *sk)
 1.按照线上情况，设置somaxconn为128,listen接口的back_log为8192 运行一定数量的客户端，频繁的向服务端建立TCP链接，然后释放，观察情况
 2.设置somaxconn为8192, 同时设置listen的接口的back_log参数也为8192,重复1的步骤</p>
 
-<div class="highlighter-rouge"><pre class="highlight"><code>&lt;?php
-while (true) {
-  $fp  =  fsockopen ( "10.138.79.205" ,  8221 ,  $errno ,  $errstr ,  0.5 );
-  fclose ( $fp );
-}
-?&gt;
+<div class="language-php highlighter-rouge"><pre class="highlight"><code><span class="cp">&lt;?php</span>
+<span class="k">while</span> <span class="p">(</span><span class="kc">true</span><span class="p">)</span> <span class="p">{</span>
+  <span class="nv">$fp</span>  <span class="o">=</span>  <span class="nb">fsockopen</span> <span class="p">(</span> <span class="s2">"10.138.79.205"</span> <span class="p">,</span>  <span class="mi">8221</span> <span class="p">,</span>  <span class="nv">$errno</span> <span class="p">,</span>  <span class="nv">$errstr</span> <span class="p">,</span>  <span class="mf">0.5</span> <span class="p">);</span>
+  <span class="nb">fclose</span> <span class="p">(</span> <span class="nv">$fp</span> <span class="p">);</span>
+<span class="p">}</span>
+<span class="cp">?&gt;</span>
 </code></pre>
 </div>
 
@@ -187,23 +188,23 @@ PHP Warning:  fsockopen(): unable to connect to xxxxxxxxxxx:8221 (Connection ref
 
 <p>服务端</p>
 
-<div class="highlighter-rouge"><pre class="highlight"><code>[wxf@host ~]$ for i in {1..6}; do netstat -s | grep -i listen; echo; sleep 1; done
-    2436905 times the listen queue of a socket overflowed
+<div class="language-shell highlighter-rouge"><pre class="highlight"><code><span class="o">[</span>wxf@host ~]<span class="nv">$ </span><span class="k">for </span>i <span class="k">in</span> <span class="o">{</span>1..6<span class="o">}</span>; <span class="k">do </span>netstat -s | grep -i listen; <span class="nb">echo</span>; sleep 1; <span class="k">done
+    </span>2436905 <span class="nb">times </span>the listen queue of a socket overflowed
     2436905 SYNs to LISTEN sockets ignored
 
-    2436927 times the listen queue of a socket overflowed
+    2436927 <span class="nb">times </span>the listen queue of a socket overflowed
     2436927 SYNs to LISTEN sockets ignored
 
-    2436950 times the listen queue of a socket overflowed
+    2436950 <span class="nb">times </span>the listen queue of a socket overflowed
     2436950 SYNs to LISTEN sockets ignored
 
-    2436985 times the listen queue of a socket overflowed
+    2436985 <span class="nb">times </span>the listen queue of a socket overflowed
     2436985 SYNs to LISTEN sockets ignored
 
-    2436999 times the listen queue of a socket overflowed
+    2436999 <span class="nb">times </span>the listen queue of a socket overflowed
     2436999 SYNs to LISTEN sockets ignored
 
-    2437018 times the listen queue of a socket overflowed
+    2437018 <span class="nb">times </span>the listen queue of a socket overflowed
     2437018 SYNs to LISTEN sockets ignored
 </code></pre>
 </div>
@@ -213,23 +214,23 @@ PHP Warning:  fsockopen(): unable to connect to xxxxxxxxxxx:8221 (Connection ref
    客户端没有报错<br />
    服务端</p>
 
-<div class="highlighter-rouge"><pre class="highlight"><code>[wxy@host ~]$ for i in {1..6}; do netstat -s | grep -i listen; echo ;sleep 1; done
-    2439591 times the listen queue of a socket overflowed
+<div class="language-shell highlighter-rouge"><pre class="highlight"><code><span class="o">[</span>wxy@host ~]<span class="nv">$ </span><span class="k">for </span>i <span class="k">in</span> <span class="o">{</span>1..6<span class="o">}</span>; <span class="k">do </span>netstat -s | grep -i listen; <span class="nb">echo</span> ;sleep 1; <span class="k">done
+    </span>2439591 <span class="nb">times </span>the listen queue of a socket overflowed
     2439591 SYNs to LISTEN sockets ignored
 
-    2439591 times the listen queue of a socket overflowed
+    2439591 <span class="nb">times </span>the listen queue of a socket overflowed
     2439591 SYNs to LISTEN sockets ignored
 
-    2439591 times the listen queue of a socket overflowed
+    2439591 <span class="nb">times </span>the listen queue of a socket overflowed
     2439591 SYNs to LISTEN sockets ignored
 
-    2439591 times the listen queue of a socket overflowed
+    2439591 <span class="nb">times </span>the listen queue of a socket overflowed
     2439591 SYNs to LISTEN sockets ignored
 
-    2439591 times the listen queue of a socket overflowed
+    2439591 <span class="nb">times </span>the listen queue of a socket overflowed
     2439591 SYNs to LISTEN sockets ignored
 
-    2439591 times the listen queue of a socket overflowed
+    2439591 <span class="nb">times </span>the listen queue of a socket overflowed
     2439591 SYNs to LISTEN sockets ignored
 </code></pre>
 </div>
@@ -248,7 +249,7 @@ PHP Warning:  fsockopen(): unable to connect to xxxxxxxxxxx:8221 (Connection ref
         <img src="/assets/img/jacketwoo.jpeg" alt="My Avatar" class="img-circle">
     </div>
     <section class="author">
-        <h4><a href="/about.html">KernelMaker</a></h4>
+        <h4><a href="/about.html">JacketWoo</a></h4>
         <a href="mailto:songzhao.asm@icloud.com">songzhao.asm@icloud.com</a>
     </section>
 </footer>
