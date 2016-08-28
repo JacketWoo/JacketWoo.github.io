@@ -12,14 +12,14 @@ workHistory:
   location: 中国, 北京
   title: 服务端开发-基础架构
   started: 2015
-  duration: (2014.8 - Present)
+  duration: (2015.8 - Present)
   description: 负责分布式存储Bada(分片)开发; Pika(大容量Redis)的开发
 
 educationHistory:
 - education:
   organization: 东南大学
   degree: 硕士
-  major: 微电子
+  major: 电子
   started: 2012
   duration: (2012.9 - 2015.7)
   description: 嵌入式
@@ -33,10 +33,10 @@ languages:
 programmingSkills:
 - CPP:
   name: C/C++
-  percentage: 70%
+  percentage: 80%
 - Bash:
   name: Bash Shell
-  percentage: 80%
+  percentage: 70%
 - PHP:
   name: PHP
   percentage: 30%
