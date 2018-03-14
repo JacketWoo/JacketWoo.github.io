@@ -1,7 +1,7 @@
 ---
 layout: post_layout
 title: 《paxos made simple》笔记
-time: 2018年03月14日 星期三
+time: 2017年03月14日 星期三
 location: 北京
 published: true
 excerpt_separator: "##"
