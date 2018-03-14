@@ -8,7 +8,7 @@ excerpt_separator: "##"
 ---
 
 
-本文我认为主要是讨论了paxos关于如何解决一致性协议中的safety部分，对termination（liveness）和faulty tolerance没有涉及太多。
+我认为本文主要讨论的是paxos如何解决一致性协议中的safety属性的内容，而对termination（liveness）和faulty tolerance没有涉及太多。
 
 ## 1 一致性协议的safety
 
