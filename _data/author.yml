@@ -12,8 +12,8 @@ workHistory:
   location: 中国, 北京
   title: 服务端开发-基础架构
   started: 2015
-  duration: (2015.8 - Present)
-  description: 负责分布式存储Bada(分片)开发; Pika(大容量Redis)的开发
+  duration: (2015.8 - 2018.5)
+  description: 参与大规模分布式存储服务bada的研发;\n负责类redis的持久化存储服务Pika的研发;\n负责公司推送系统的研发
 
 educationHistory:
 - education:
@@ -33,10 +33,7 @@ languages:
 programmingSkills:
 - CPP:
   name: C/C++
-  percentage: 80%
+  percentage: 90%
 - Bash:
   name: Bash Shell
-  percentage: 70%
-- PHP:
-  name: PHP
-  percentage: 30%
+  percentage: 80%
