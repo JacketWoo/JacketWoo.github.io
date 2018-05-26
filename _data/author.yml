@@ -10,9 +10,10 @@ workHistory:
 - work2:
   company: 阿里云
   location: 中国, 杭州
-  started： 2018
+  title: 服务端开发-基础平台
+  started: 2018
   duration: (2018.5 - ?)
-  discription: 从事Nosql、网络等相关的研发 
+  description: 从事Nosql、网络等相关的研发
 
 - work1:
   company: 奇虎360
