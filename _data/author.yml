@@ -10,7 +10,7 @@ workHistory:
 - work2:
   company: 阿里云
   location: 中国, 杭州
-  started： 2018
+  started: 2018
   duration: (2018.5 - ?)
   discription: 从事Nosql、网络等相关的研发 
 
